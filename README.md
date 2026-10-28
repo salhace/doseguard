@@ -4,7 +4,7 @@
 
 `ESP32` · `IoT` · `MQTT` · `Embedded C++` · `JavaScript` · `3D design` · `Wokwi`
 
-**[▶ Try the live demo](https://YOUR-USERNAME.github.io/doseguard/)** — take the cap off, inject, then try to inject again.
+**[▶ Try the live demo](https://salhace.github.io/doseguard/)** — take the cap off, inject, then try to inject again.
 
 ![STOP alarm when the cap is opened too soon after a dose](docs/images/stop-alarm.png)
 
