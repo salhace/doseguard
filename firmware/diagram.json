@@ -1,0 +1,49 @@
+{
+  "version": 1,
+  "author": "Salha Alwahbi",
+  "editor": "wokwi",
+  "parts": [
+    { "type": "board-esp32-devkit-c-v4", "id": "esp", "top": 0, "left": 0, "attrs": {} },
+    { "type": "board-ssd1306", "id": "oled", "top": -118, "left": 150, "attrs": { "i2cAddress": "0x3c" } },
+    { "type": "wokwi-slide-switch", "id": "cap", "top": -60, "left": -170, "attrs": { "value": "0" } },
+    { "type": "wokwi-text", "id": "capLabel", "top": -88, "left": -192, "attrs": { "text": "Pen cap (ON / OFF)" } },
+    { "type": "wokwi-pushbutton", "id": "btn", "top": 40, "left": -190, "attrs": { "color": "blue", "label": "Snooze / New pen" } },
+    { "type": "wokwi-ntc-temperature-sensor", "id": "ntc", "top": 150, "left": -220, "attrs": { "temperature": "24" } },
+    { "type": "wokwi-rgb-led", "id": "rgb", "top": 30, "left": 250, "attrs": { "common": "cathode" } },
+    { "type": "wokwi-resistor", "id": "rR", "top": 110, "left": 210, "rotate": 90, "attrs": { "value": "220" } },
+    { "type": "wokwi-resistor", "id": "rG", "top": 110, "left": 240, "rotate": 90, "attrs": { "value": "220" } },
+    { "type": "wokwi-resistor", "id": "rB", "top": 110, "left": 270, "rotate": 90, "attrs": { "value": "220" } },
+    { "type": "wokwi-buzzer", "id": "buzzer", "top": 210, "left": 230, "attrs": { "volume": "0.2" } }
+  ],
+  "connections": [
+    [ "esp:TX", "$serialMonitor:RX", "", [] ],
+    [ "esp:RX", "$serialMonitor:TX", "", [] ],
+
+    [ "oled:GND", "esp:GND.2", "black", [] ],
+    [ "oled:VCC", "esp:3V3", "red", [] ],
+    [ "oled:SDA", "esp:21", "blue", [] ],
+    [ "oled:SCL", "esp:22", "violet", [] ],
+
+    [ "cap:2", "esp:14", "orange", [] ],
+    [ "cap:1", "esp:GND.1", "black", [] ],
+
+    [ "btn:1.l", "esp:13", "cyan", [] ],
+    [ "btn:2.l", "esp:GND.1", "black", [] ],
+
+    [ "ntc:VCC", "esp:3V3", "red", [] ],
+    [ "ntc:GND", "esp:GND.1", "black", [] ],
+    [ "ntc:OUT", "esp:34", "gold", [] ],
+
+    [ "esp:26", "rR:1", "red", [] ],
+    [ "rR:2", "rgb:R", "red", [] ],
+    [ "esp:27", "rG:1", "green", [] ],
+    [ "rG:2", "rgb:G", "green", [] ],
+    [ "esp:33", "rB:1", "blue", [] ],
+    [ "rB:2", "rgb:B", "blue", [] ],
+    [ "rgb:COM", "esp:GND.2", "black", [] ],
+
+    [ "esp:25", "buzzer:2", "magenta", [] ],
+    [ "buzzer:1", "esp:GND.2", "black", [] ]
+  ],
+  "dependencies": {}
+}

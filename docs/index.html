@@ -1,0 +1,837 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>DoseGuard</title>
+<meta name="description" content="DoseGuard: a smart insulin pen cap that stops double doses, catches missed doses and protects insulin from heat and freezing.">
+<meta name="theme-color" content="#06080c">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&family=Geist+Mono:wght@400;500&family=VT323&display=swap">
+<style>
+/* Layout: product page. Dark studio hero with the 3D pen as the subject,
+   then the live dashboard ("everything the cap knows"), then the hardware. */
+:root{
+  --bg:#06080c; --bg2:#0b0e14; --card:rgba(255,255,255,.035); --card-solid:#0e121a;
+  --line:rgba(255,255,255,.08); --line2:rgba(255,255,255,.14);
+  --text:#f2f4f7; --muted:#8b93a3; --dim:#5b6372;
+  --ice:#8fe6ff; --ice-soft:rgba(143,230,255,.12);
+  --ok:#3ddc97; --warn:#ffb547; --crit:#ff4d5e;
+  --sans:"Geist",ui-sans-serif,system-ui,-apple-system,sans-serif;
+  --mono:"Geist Mono",ui-monospace,Menlo,monospace;
+  --oled:"VT323",ui-monospace,monospace;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:16px;line-height:1.55;-webkit-font-smoothing:antialiased;overflow-x:hidden}
+.gut{padding-left:max(20px,env(safe-area-inset-left,0px));padding-right:max(20px,env(safe-area-inset-right,0px))}
+.wrap{max-width:1160px;margin:0 auto}
+a{color:inherit}
+button{font:500 .92rem var(--sans);color:var(--text);background:rgba(255,255,255,.06);border:1px solid var(--line2);border-radius:999px;padding:11px 20px;cursor:pointer;transition:background .2s,border-color .2s,transform .1s}
+button:hover:not(:disabled){background:rgba(255,255,255,.1)}
+button:active:not(:disabled){transform:scale(.98)}
+button.primary{background:var(--text);color:#06080c;border-color:var(--text)}
+button.primary:hover:not(:disabled){background:#fff}
+button:disabled{opacity:.35;cursor:not-allowed}
+button:focus-visible,input:focus-visible,canvas:focus-visible{outline:2px solid var(--ice);outline-offset:3px}
+.eyebrow{font-family:var(--mono);font-size:.74rem;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin:0}
+
+/* nav */
+nav{position:sticky;top:0;z-index:20;backdrop-filter:saturate(1.4) blur(18px);-webkit-backdrop-filter:saturate(1.4) blur(18px);background:rgba(6,8,12,.72);border-bottom:1px solid var(--line);padding-top:env(safe-area-inset-top,0px)}
+nav .wrap{display:flex;align-items:center;gap:22px;height:58px}
+.logo{display:flex;align-items:center;gap:10px;font-weight:600;letter-spacing:-.01em;font-size:1.05rem;text-decoration:none}
+.links{display:flex;gap:22px;margin-left:auto;font-size:.88rem;color:var(--muted)}
+.links a{text-decoration:none}.links a:hover{color:var(--text)}
+@media (max-width:760px){.links{display:none}.modes{margin-left:auto}}
+.seg{display:inline-flex;background:rgba(255,255,255,.05);border:1px solid var(--line);border-radius:999px;padding:3px}
+.seg button{border:0;background:transparent;padding:6px 13px;font-size:.82rem;color:var(--muted)}
+.seg button[aria-pressed="true"]{background:rgba(255,255,255,.12);color:var(--text)}
+.ldot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--dim);margin-right:6px;vertical-align:1px}
+.ldot.on{background:var(--ok);box-shadow:0 0 10px var(--ok)}
+
+/* hero */
+.hero{position:relative;padding-top:56px;text-align:center;overflow:hidden}
+.hero::before{content:"";position:absolute;inset:0;background:
+  radial-gradient(60% 45% at 50% 62%,rgba(143,230,255,.10),transparent 70%),
+  radial-gradient(30% 25% at 30% 58%,var(--halo,rgba(61,220,151,.10)),transparent 70%);pointer-events:none;transition:background .6s}
+.hero h1{position:relative;font-weight:600;font-size:clamp(2.6rem,7.4vw,5.6rem);line-height:1.02;letter-spacing:-.045em;margin:18px auto 0;max-width:13ch;text-wrap:balance;
+  background:linear-gradient(180deg,#fff 30%,#9aa3b2);-webkit-background-clip:text;background-clip:text;color:transparent}
+.hero .lede{position:relative;color:var(--muted);font-size:clamp(1.05rem,2vw,1.3rem);max-width:40ch;margin:20px auto 0;text-wrap:balance}
+.hero .lede b{color:var(--text);font-weight:500}
+.stage{position:relative;height:clamp(320px,46vw,520px);margin-top:0}
+#three{position:absolute;inset:0;width:100%;height:100%;display:block;cursor:grab;touch-action:pan-y}
+#three:active{cursor:grabbing}
+.svgfall{position:absolute;inset:0;display:none;place-items:center}
+.svgfall svg{width:min(760px,92%)}
+.chip{position:absolute;font-family:var(--mono);font-size:.76rem;color:var(--muted);border:1px solid var(--line);background:rgba(10,13,19,.7);backdrop-filter:blur(8px);padding:7px 12px;border-radius:999px;white-space:nowrap}
+.chip b{color:var(--text);font-weight:500}
+@media (max-width:760px){.chip{display:none}}
+.hint{position:absolute;left:50%;bottom:6px;transform:translateX(-50%);font-family:var(--mono);font-size:.72rem;color:var(--dim)}
+.status{position:relative;display:inline-flex;align-items:center;gap:14px;text-align:left;border:1px solid var(--line2);background:rgba(14,18,26,.75);backdrop-filter:blur(14px);border-radius:18px;padding:14px 20px;margin-top:6px;max-width:min(560px,100%)}
+.status .led{width:12px;height:12px;border-radius:50%;flex:none;background:var(--ok);box-shadow:0 0 14px var(--ok)}
+.status b{display:block;font-weight:600;font-size:1.02rem;letter-spacing:-.01em}
+.status span{color:var(--muted);font-size:.9rem}
+.ctl{display:flex;flex-wrap:wrap;gap:10px;justify-content:center;margin:22px 0 0}
+.holdbtn{position:relative;overflow:hidden}
+.holdbtn .fill{position:absolute;inset:0;background:var(--ice-soft);transform-origin:left;transform:scaleX(0)}
+.holdbtn span{position:relative}
+.clockline{font-family:var(--mono);font-size:.78rem;color:var(--dim);margin:18px 0 0;padding-bottom:70px}
+
+/* sections */
+section.block{padding-block:84px;border-top:1px solid var(--line)}
+.shead{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:flex-end;gap:16px;margin-bottom:36px}
+.shead h2{font-weight:600;font-size:clamp(2rem,4.4vw,3.2rem);letter-spacing:-.04em;line-height:1.05;margin:10px 0 0;max-width:16ch;text-wrap:balance}
+.shead p{color:var(--muted);max-width:44ch;margin:0}
+.card{background:var(--card);border:1px solid var(--line);border-radius:22px;padding:24px;min-width:0}
+.bento{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:14px}
+.c5{grid-column:span 5}.c7{grid-column:span 7}.c12{grid-column:span 12}.c3{grid-column:span 3}.c4{grid-column:span 4}.c8{grid-column:span 8}
+@media (max-width:900px){.c5,.c7,.c3,.c4,.c8{grid-column:span 12}}
+@media (min-width:600px) and (max-width:900px){.c3{grid-column:span 6}}
+
+/* dial */
+.dialcard{display:grid;justify-items:center;text-align:center;gap:6px}
+.dial{position:relative;width:min(320px,100%);aspect-ratio:1}
+.dial svg{width:100%;height:100%;display:block;overflow:visible}
+.dial .center{position:absolute;inset:0;display:grid;place-content:center;gap:4px}
+.dial .big{font-weight:600;font-size:clamp(2.6rem,6vw,3.6rem);line-height:1;letter-spacing:-.05em;font-variant-numeric:tabular-nums}
+.dial .small{color:var(--muted);font-size:.9rem}
+.verdict{font-weight:600;font-size:1.1rem;letter-spacing:-.01em;margin-top:8px}
+.due{color:var(--muted);font-size:.9rem}
+
+/* screen card */
+.oledwrap{display:grid;gap:22px}
+.oled{background:#020306;border-radius:14px;padding:16px 18px;border:1px solid #1a1f29;box-shadow:inset 0 0 40px rgba(143,230,255,.05),0 0 0 6px #0b0e14;max-width:100%;overflow:hidden}
+.oled pre{margin:0;font-family:var(--oled);font-size:22px;line-height:1.02;color:#c6f6ff;white-space:pre;text-shadow:0 0 8px rgba(143,230,255,.45)}
+.oled .inv{background:#c6f6ff;color:#020306;text-shadow:none}
+.oled .big{font-size:40px;line-height:1}
+@keyframes blink{50%{opacity:.25}}
+.blink{animation:blink .6s steps(1) infinite}
+.temp label{display:flex;justify-content:space-between;font-size:.9rem;color:var(--muted)}
+.temp label b{font-family:var(--mono);color:var(--text);font-weight:500}
+input[type=range]{width:100%;accent-color:var(--ice);margin:10px 0 6px}
+.zones{display:flex;height:4px;border-radius:2px;overflow:hidden;gap:2px}
+.zones i{display:block;border-radius:2px}
+.zlbl{display:flex;justify-content:space-between;font-family:var(--mono);font-size:.7rem;color:var(--dim);margin-top:6px}
+.row{display:flex;flex-wrap:wrap;gap:8px}
+
+/* metrics */
+.metric .k{font-family:var(--mono);font-size:.72rem;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+.metric .v{font-weight:600;font-size:2.2rem;letter-spacing:-.04em;line-height:1.1;margin-top:14px;font-variant-numeric:tabular-nums}
+.metric .s{color:var(--muted);font-size:.88rem;margin-top:4px}
+.cells{display:grid;grid-template-columns:repeat(14,1fr);gap:3px;margin-top:18px}
+.cells i{height:8px;border-radius:2px;background:rgba(255,255,255,.07)}
+.cells i.used{background:var(--ice);opacity:.8}.cells i.today{background:#fff}.cells i.over{background:var(--crit)}
+.meter{height:6px;border-radius:3px;background:rgba(255,255,255,.07);overflow:hidden;margin-top:18px}
+.meter i{display:block;height:100%;border-radius:3px;transition:width .5s,background .3s}
+
+/* map */
+.mapwrap{overflow-x:auto;margin-top:10px}
+#map{display:block;min-width:640px;width:100%;height:auto}
+.legend{display:flex;flex-wrap:wrap;gap:8px 20px;font-size:.84rem;color:var(--muted);margin-top:14px}
+.legend span{display:inline-flex;align-items:center;gap:7px}
+
+/* feed + steps */
+.feed{list-style:none;margin:14px 0 0;padding:0;max-height:360px;overflow:auto}
+.feed li{display:grid;grid-template-columns:110px minmax(0,1fr);gap:14px;padding:11px 0;border-bottom:1px solid var(--line);font-size:.92rem}
+.feed li:last-child{border:0}
+.feed time{font-family:var(--mono);font-size:.76rem;color:var(--dim);padding-top:2px}
+.feed .crit{color:var(--crit)}.feed .warn{color:var(--warn)}.feed .ok{color:var(--ok)}
+.cfg{display:flex;gap:8px;flex-wrap:wrap;margin-top:18px}
+.cfg input{flex:1 1 200px;min-width:0;font:.86rem var(--mono);padding:11px 14px;border-radius:999px;border:1px solid var(--line2);background:rgba(255,255,255,.04);color:var(--text)}
+.note{color:var(--muted);font-size:.86rem;margin:10px 0 0}
+
+/* how */
+.how{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}
+@media (max-width:900px){.how{grid-template-columns:1fr 1fr}}
+@media (max-width:560px){.how{grid-template-columns:1fr}}
+.how .card{display:flex;flex-direction:column;gap:12px}
+.how .n{font-family:var(--mono);font-size:.78rem;color:var(--ice)}
+.how b{font-weight:600;font-size:1.15rem;letter-spacing:-.02em}
+.how p{color:var(--muted);margin:0;font-size:.92rem}
+
+/* hardware */
+.hw{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,.9fr);gap:14px;align-items:stretch}
+@media (max-width:900px){.hw{grid-template-columns:1fr}}
+.hw img{width:100%;border-radius:16px;display:block;background:#1d1f21}
+.parts{list-style:none;margin:0;padding:0}
+.parts li{display:flex;justify-content:space-between;gap:16px;padding:12px 0;border-bottom:1px solid var(--line);font-size:.93rem}
+.parts li:last-child{border:0}
+.parts span{color:var(--muted);text-align:right}
+footer{border-top:1px solid var(--line);padding-block:34px 48px;color:var(--dim);font-size:.86rem}
+footer .wrap{display:flex;flex-wrap:wrap;justify-content:space-between;gap:10px 24px}
+@media (prefers-reduced-motion: reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+
+<nav class="gut">
+  <div class="wrap">
+    <a class="logo" href="#top">
+      <svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true"><rect width="26" height="26" rx="8" fill="#f2f4f7"/><rect x="5" y="11" width="11" height="4" rx="2" fill="#06080c"/><rect x="15.5" y="9.5" width="5.5" height="7" rx="2" fill="#3ddc97"/></svg>
+      DoseGuard
+    </a>
+    <div class="links"><a href="#dashboard">Dashboard</a><a href="#how">How it works</a><a href="#hardware">Hardware</a><a href="https://github.com/" id="repo">GitHub</a></div>
+    <div class="modes seg" role="group" aria-label="Data source">
+      <button id="modeSim" aria-pressed="true">Simulator</button>
+      <button id="modeLive" aria-pressed="false"><span class="ldot" id="liveDot"></span>Live</button>
+    </div>
+  </div>
+</nav>
+
+<header class="hero gut" id="top">
+  <p class="eyebrow">Smart cap for insulin pens</p>
+  <h1>Did I already take my insulin?</h1>
+  <p class="lede">DoseGuard <b>answers before you inject</b>. Take the cap off too soon and it stops you.</p>
+
+  <div class="stage">
+    <canvas id="three" tabindex="0" aria-label="3D model of the insulin pen with the DoseGuard cap. Press Enter to take the cap off or put it back."></canvas>
+    <div class="svgfall" id="svgfall">
+      <svg viewBox="0 0 640 150" aria-hidden="true">
+        <rect x="140" y="56" width="400" height="58" rx="20" fill="#2b3242"/><rect x="300" y="56" width="34" height="58" fill="#8f7cf0"/>
+        <rect x="540" y="62" width="70" height="46" rx="12" fill="#2b3242"/><rect x="84" y="84" width="60" height="3" fill="#9aa4b2"/>
+        <g id="svgCap"><rect x="40" y="48" width="128" height="74" rx="26" fill="#e9edf3"/><rect x="54" y="62" width="62" height="34" rx="5" fill="#020306"/>
+        <text id="svgCapTxt" x="85" y="85" text-anchor="middle" font-family="VT323, monospace" font-size="18" fill="#c6f6ff">--</text><circle id="svgCapLed" cx="142" cy="79" r="8" fill="#3ddc97"/></g>
+      </svg>
+    </div>
+    <span class="chip" style="left:7%;top:16%"><b>3 h</b> double-dose guard</span>
+    <span class="chip" style="right:8%;top:10%">cap off <b>≥ 6 s</b> = dose</span>
+    <span class="chip" style="left:10%;bottom:16%">freeze <b>0 °C</b> · heat <b>30 °C</b></span>
+    <span class="chip" style="right:9%;bottom:22%"><b>28-day</b> pen life</span>
+    <span class="hint" id="hint">Click the cap · drag to turn</span>
+  </div>
+
+  <div class="status" id="status" role="status" aria-live="polite"><span class="led" id="led"></span><div><b id="sTitle">--</b><span id="sText"></span></div></div>
+  <div class="ctl">
+    <button class="primary" id="capBtn">Take cap off</button>
+    <button id="snoozeBtn">Snooze</button>
+    <button class="holdbtn" id="newPenBtn" title="Hold for 3 seconds"><span class="fill" id="holdFill"></span><span>Hold for new pen</span></button>
+    <button id="skipBtn">+1 hour</button>
+    <button id="soundBtn" aria-pressed="true">Sound on</button>
+  </div>
+  <p class="clockline" id="clock">--</p>
+</header>
+
+<section class="block gut" id="dashboard">
+  <div class="wrap">
+    <div class="shead">
+      <div><p class="eyebrow">Companion app</p><h2>Everything the cap knows.</h2></div>
+      <p>The cap sends every event over Wi-Fi to this page, so a parent or carer can follow along. Simulator mode runs the same rules in your browser, 60 times faster than real time.</p>
+    </div>
+
+    <div class="bento">
+      <div class="card c5 dialcard">
+        <p class="eyebrow">Since last dose</p>
+        <div class="dial">
+          <svg viewBox="0 0 300 300" aria-hidden="true">
+            <defs><filter id="glow" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="5" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>
+            <circle cx="150" cy="150" r="128" fill="none" stroke="rgba(255,255,255,.06)" stroke-width="10"/>
+            <g id="ticks"></g>
+            <circle id="ring" cx="150" cy="150" r="128" fill="none" stroke="#8fe6ff" stroke-width="10" stroke-linecap="round" filter="url(#glow)"
+              stroke-dasharray="0 804.25" transform="rotate(-90 150 150)" style="transition:stroke-dasharray .6s,stroke .3s"/>
+            <circle id="ringDot" cx="150" cy="22" r="7" fill="#06080c" stroke="#8fe6ff" stroke-width="3"/>
+          </svg>
+          <div class="center"><div class="big" id="since">--</div><div class="small" id="sinceLbl">since last dose</div></div>
+        </div>
+        <div class="verdict" id="verdict">--</div>
+        <div class="due" id="due">--</div>
+      </div>
+
+      <div class="card c7 oledwrap">
+        <p class="eyebrow">Cap screen · <span id="devId">simulator</span></p>
+        <div class="oled" aria-label="Cap display"><pre id="oled"></pre></div>
+        <div class="temp">
+          <label for="temp">Pen temperature <b id="tempVal">24.0 °C</b></label>
+          <input type="range" id="temp" min="-5" max="42" step="0.5" value="24">
+          <div class="zones" aria-hidden="true"><i style="flex:5;background:var(--crit)"></i><i style="flex:30;background:var(--ok);opacity:.6"></i><i style="flex:12;background:var(--warn)"></i></div>
+          <div class="zlbl"><span>−5 °C</span><span>0</span><span style="margin-left:auto;margin-right:22%">30</span><span>42 °C</span></div>
+        </div>
+      </div>
+
+      <div class="card c3 metric"><div class="k">Pen life</div><div class="v" id="penDay">Day --</div><div class="s" id="penLeft">--</div><div class="cells" id="cells"></div></div>
+      <div class="card c3 metric"><div class="k">Heat exposure</div><div class="v" id="heat">--</div><div class="s" id="heatLbl">--</div><div class="meter"><i id="heatBar"></i></div></div>
+      <div class="card c3 metric"><div class="k">Temperature</div><div class="v" id="tempNow">--</div><div class="s" id="tempMax">--</div><div class="meter"><i id="tempBar"></i></div></div>
+      <div class="card c3 metric"><div class="k">Freeze check</div><div class="v" id="frozen">--</div><div class="s" id="frozenLbl">--</div></div>
+
+      <div class="card c12">
+        <p class="eyebrow">Dose map · last 14 days · daily dose at <span id="dueLbl">21:00</span></p>
+        <div class="mapwrap"><svg id="map" viewBox="0 0 900 250" aria-label="Doses over the last 14 days"></svg></div>
+        <div class="legend">
+          <span><svg width="12" height="12"><circle cx="6" cy="6" r="5" fill="#8fe6ff"/></svg>On time</span>
+          <span><svg width="12" height="12"><circle cx="6" cy="6" r="5" fill="#ffb547"/></svg>Late</span>
+          <span><svg width="14" height="14"><circle cx="7" cy="7" r="3.5" fill="#ff4d5e"/><circle cx="7" cy="7" r="6" fill="none" stroke="#ff4d5e" stroke-width="1.4"/></svg>Second dose inside the guard</span>
+          <span><svg width="12" height="12"><path d="M2 2l8 8M10 2l-8 8" stroke="#ff4d5e" stroke-width="2"/></svg>Missed</span>
+          <span><svg width="20" height="10"><rect width="20" height="10" rx="2" fill="rgba(143,230,255,.12)"/></svg>Dose window 18:00–22:00</span>
+        </div>
+      </div>
+
+      <div class="card c8">
+        <p class="eyebrow">Event log</p>
+        <ul class="feed" id="feed"></ul>
+      </div>
+      <div class="card c4">
+        <p class="eyebrow">Connect a real cap</p>
+        <p class="note" style="margin-top:14px">Run DoseGuard in Wokwi or on an ESP32, then switch to <b style="color:var(--text);font-weight:500">Live</b>. The page subscribes to the cap's MQTT topic.</p>
+        <div class="cfg"><input id="topic" value="doseguard/pen-01" aria-label="MQTT topic of the device"><button id="connectBtn">Connect</button></div>
+        <p class="note" id="liveNote">Not connected.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="block gut" id="how">
+  <div class="wrap">
+    <div class="shead"><div><p class="eyebrow">How it works</p><h2>Same routine. One extra check.</h2></div>
+      <p>Nothing changes for the patient. Take the cap off, inject, put it back. The cap does the rest.</p></div>
+    <div class="how">
+      <div class="card"><span class="n">01</span><b>Cap off: check first</b><p>The moment the cap comes off, it compares the time with the last dose. Inside 3 hours it shows STOP and beeps, before the needle goes in.</p></div>
+      <div class="card"><span class="n">02</span><b>Cap back: dose logged</b><p>An injection takes several seconds, so a cap-off of 6 s or more is logged as a dose. A quick peek is ignored.</p></div>
+      <div class="card"><span class="n">03</span><b>Watches the insulin</b><p>A thermistor next to the cartridge catches freezing, adds up minutes above 30 °C and counts down the 28-day life of an opened pen.</p></div>
+      <div class="card"><span class="n">04</span><b>Keeps family in the loop</b><p>Doses, missed days and alarms go over MQTT to this page. The log is stored in flash and survives power loss.</p></div>
+    </div>
+  </div>
+</section>
+
+<section class="block gut" id="hardware">
+  <div class="wrap">
+    <div class="shead"><div><p class="eyebrow">Hardware</p><h2>Off-the-shelf parts, 3D-printed shell.</h2></div>
+      <p>The enclosure is a parametric OpenSCAD model. Change one number to fit any pen.</p></div>
+    <div class="hw">
+      <div class="card" style="padding:12px"><img src="images/enclosure.png" alt="3D model of the DoseGuard cap enclosure with OLED window, LED and button holes"></div>
+      <div class="card">
+        <ul class="parts">
+          <li>ESP32<span>Wi-Fi microcontroller</span></li>
+          <li>Reed switch + magnet<span>Cap on / off</span></li>
+          <li>10 kΩ NTC thermistor<span>Insulin temperature</span></li>
+          <li>SSD1306 OLED<span>128 × 64 cap screen</span></li>
+          <li>RGB LED<span>Status at a glance</span></li>
+          <li>Buzzer<span>STOP and reminder alarms</span></li>
+          <li>Push button<span>Snooze · hold 3 s for a new pen</span></li>
+          <li>Firmware<span>Arduino C++ · NVS · NTP · MQTT</span></li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer class="gut"><div class="wrap">
+  <span>Designed and built by Salha Alwahbi · Computer Engineering</span>
+  <span>Student engineering project, not a medical device.</span>
+</div></footer>
+
+<script src="https://unpkg.com/three@0.149.0/build/three.min.js"></script>
+<script src="https://unpkg.com/mqtt@5.10.1/dist/mqtt.min.js"></script>
+<script>
+"use strict";
+// ======================= constants (same as the firmware) =======================
+const SCALE = 60, H = 3600, D = 86400, TZ = 3 * H;          // Riyadh UTC+3
+const DOSE_HOUR = 21, DOSE_MINUTE = 0, EARLY_MIN = 180, GRACE_MIN = 60, MISSED_AFTER_MIN = 720;
+const GUARD_MIN = 180, CAP_OFF_REMIND_MIN = 10, MIN_INJECTION_MS = 6000;
+const HEAT_LIMIT = 30, FREEZE_LIMIT = 0, HEAT_BUDGET = 120, PEN_LIFE = 28;
+const BROKER = "wss://broker.hivemq.com:8884/mqtt";
+const F_GUARD = 1, F_LATE = 2;
+const C = { ice: "#8fe6ff", ok: "#3ddc97", warn: "#ffb547", crit: "#ff4d5e", muted: "#8b93a3", dim: "#5b6372", line: "rgba(255,255,255,.08)", text: "#f2f4f7" };
+const $ = id => document.getElementById(id);
+
+// ======================= time helpers (+03) =======================
+const lp = t => { const d = new Date((t + TZ) * 1000); return { mo: d.getUTCMonth(), d: d.getUTCDate(), h: d.getUTCHours(), m: d.getUTCMinutes(), wd: d.getUTCDay() }; };
+const dayStart = t => Math.floor((t + TZ) / D) * D - TZ;
+const lastDueAt = t => { let due = dayStart(t) + DOSE_HOUR * H + DOSE_MINUTE * 60; if (due > t) due -= D; return due; };
+const pad = n => String(n).padStart(2, "0");
+const clock = t => { const p = lp(t); return `${pad(p.h)}:${pad(p.m)}`; };
+const WD = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"], MO = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+const dateLbl = t => { const p = lp(t); return `${WD[p.wd]} ${p.d} ${MO[p.mo]}`; };
+const minsBetween = (a, b) => b > a ? Math.floor((b - a) / 60) : 0;
+const span = m => m < 60 ? `${m}m` : m < 2880 ? `${Math.floor(m / 60)}h ${pad(m % 60)}m` : `${Math.floor(m / 1440)}d ${Math.floor(m % 1440 / 60)}h`;
+const rng = seed => () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+
+// ======================= simulator: JS twin of the firmware =======================
+const sim = (() => {
+  const today = dayStart(Math.floor(Date.now() / 1000));
+  let baseEpoch = today + 20 * H + 48 * 60, baseMs = Date.now();
+  const now = () => baseEpoch + Math.floor((Date.now() - baseMs) * SCALE / 1000);
+
+  // example history: 13 days, one missed day, one late dose, one double dose
+  const r = rng(20261027), doses = [], missed = [];
+  for (let d = 13; d >= 1; d--) {
+    const due = today - d * D + DOSE_HOUR * H;
+    if (d === 6) { missed.push(due); continue; }
+    let t = due + Math.round((r() * 55 - 32) * 60), flags = 0;
+    if (d === 4) { t = due + 97 * 60; flags = F_LATE; }
+    doses.push([t, 7 + Math.floor(r() * 7), flags]);
+    if (d === 10) doses.push([t + 74 * 60, 8, F_GUARD]);
+  }
+  const st = { doses, missed, penStart: today - 9 * D + 20 * H + 55 * 60, heatMin: 34, maxTemp: 31.4, frozen: false };
+  const events = [];
+  doses.filter(d => d[0] > today - 5 * D).forEach(([t, hold, flags]) => events.push({ type: "dose", t, hold_s: hold, guard: !!(flags & F_GUARD), late: !!(flags & F_LATE) }));
+  missed.filter(m => m > today - 8 * D).forEach(due => events.push({ type: "dose_missed", t: due + MISSED_AFTER_MIN * 60, due }));
+  events.push({ type: "online", t: today + 20 * H + 47 * 60 });
+  events.sort((a, b) => a.t - b.t);
+
+  let capOn = true, capOffAtMs = 0, capOffAtEpoch = 0, guard = false, silenced = false;
+  let missedAcked = 0, lastMissedLogged = 0, temp = 24, hot = false, lastHeatTick = 0, state = "OK", lastSample = 0;
+  const emit = (type, extra = {}) => { const e = { type, t: now(), ...extra }; events.push(e); onEvent(e); };
+  const lastDose = () => st.doses.length ? st.doses[st.doses.length - 1] : null;
+
+  function removeCap(){
+    capOn = false; capOffAtMs = Date.now(); capOffAtEpoch = now(); silenced = false;
+    const ld = lastDose();
+    guard = !!ld && minsBetween(ld[0], capOffAtEpoch) < GUARD_MIN;
+    guard ? emit("guard_warning", { since_min: minsBetween(ld[0], capOffAtEpoch) }) : emit("cap_off");
+  }
+  function replaceCap(){
+    capOn = true;
+    const held = Date.now() - capOffAtMs;
+    if (held >= MIN_INJECTION_MS) {
+      let flags = 0;
+      if (guard) flags |= F_GUARD;
+      if (capOffAtEpoch > lastDueAt(capOffAtEpoch + EARLY_MIN * 60) + GRACE_MIN * 60) flags |= F_LATE;
+      st.doses.push([capOffAtEpoch, Math.round(held / 1000), flags]); if (st.doses.length > 30) st.doses.shift();
+      emit("dose", { hold_s: Math.round(held / 1000), guard: !!(flags & F_GUARD), late: !!(flags & F_LATE) });
+    } else emit("cap_peek");
+    guard = false; silenced = false;
+  }
+  function overdueDue(t){
+    const due = lastDueAt(t);
+    if (t < due + GRACE_MIN * 60 || st.penStart > due) return 0;
+    const ld = lastDose(); if (ld && ld[0] >= due - EARLY_MIN * 60) return 0;
+    return due;
+  }
+  function checkMissed(t){
+    const due = lastDueAt(t);
+    if (t < due + MISSED_AFTER_MIN * 60 || due === lastMissedLogged || st.penStart > due) return;
+    lastMissedLogged = due;
+    const ld = lastDose(); if (ld && ld[0] >= due - EARLY_MIN * 60) return;
+    if (st.missed.includes(due)) return;
+    st.missed.push(due); if (st.missed.length > 10) st.missed.shift();
+    emit("dose_missed", { due });
+  }
+  function sampleTemp(t){
+    if (temp > st.maxTemp) st.maxTemp = temp;
+    const was = hot; hot = temp > HEAT_LIMIT;
+    if (hot && !was) { lastHeatTick = t; emit("heat_start"); }
+    if (!hot && was) emit("heat_end");
+    if (hot) { const m = minsBetween(lastHeatTick, t); if (m) { const before = st.heatMin >= HEAT_BUDGET; st.heatMin += m; lastHeatTick += m * 60;
+      if (!before && st.heatMin >= HEAT_BUDGET) emit("heat_budget_exceeded"); } }
+    if (temp <= FREEZE_LIMIT && !st.frozen) { st.frozen = true; emit("frozen"); }
+  }
+  function computeState(t){
+    if (!capOn) { if (guard) return "GUARD"; if (Date.now() - capOffAtMs > CAP_OFF_REMIND_MIN * 60000 / SCALE) return "CAP_LEFT_OFF"; return "INJECTING"; }
+    if (st.frozen) return "FROZEN";
+    const od = overdueDue(t);
+    if (od && od !== missedAcked && t < od + MISSED_AFTER_MIN * 60) return "MISSED";
+    if (hot) return "HOT";
+    if (st.heatMin >= HEAT_BUDGET) return "HEAT_EXPOSED";
+    if (PEN_LIFE - Math.floor((t - st.penStart) / D) <= 0) return "PEN_EXPIRED";
+    if (!lastDose()) return "NO_DOSE_YET";
+    return "OK";
+  }
+  function tick(){
+    const t = now();
+    if (Date.now() - lastSample >= 1000) { lastSample = Date.now(); sampleTemp(t); checkMissed(t); }
+    const s = computeState(t);
+    if (s !== state) { silenced = false; state = s; emit("state", { state: s }); }
+  }
+  function model(){
+    const t = now(), ld = lastDose(), since = ld ? minsBetween(ld[0], t) : 0;
+    return { id: "simulator", now: t, scale: SCALE, state, cap_on: capOn, hold_s: capOn ? 0 : Math.floor((Date.now() - capOffAtMs) / 1000),
+      last_dose: ld ? ld[0] : null, since_min: since, guard_left_min: ld && since < GUARD_MIN ? GUARD_MIN - since : 0, guard_min: GUARD_MIN,
+      due_hour: DOSE_HOUR, due_min: DOSE_MINUTE, temp, max_temp: st.maxTemp, heat_min: st.heatMin, heat_budget: HEAT_BUDGET, heat_limit: HEAT_LIMIT,
+      frozen: st.frozen, pen_start: st.penStart, pen_day: Math.floor((t - st.penStart) / D) + 1, pen_life: PEN_LIFE, silenced, doses: st.doses, missed: st.missed };
+  }
+  return { model, tick, events,
+    toggleCap(){ capOn ? removeCap() : replaceCap(); tick(); },
+    setTemp(v){ temp = v; },
+    snooze(){ silenced = true; if (state === "MISSED") { missedAcked = overdueDue(now()); emit("missed_snoozed"); } tick(); },
+    newPen(){ st.penStart = now(); st.heatMin = 0; st.maxTemp = temp; st.frozen = false; emit("new_pen"); tick(); },
+    skip(sec){ baseEpoch += sec; tick(); } };
+})();
+
+// ======================= live device over MQTT =======================
+let mode = "sim", live = null, liveLog = { doses: [], missed: [] }, liveLast = 0, client = null;
+const liveEvents = [];
+function connectLive(){
+  const prefix = $("topic").value.trim().replace(/\/$/, "");
+  if (client) { try { client.end(true); } catch {} }
+  live = null; liveLog = { doses: [], missed: [] }; liveEvents.length = 0;
+  if (typeof mqtt === "undefined") { $("liveNote").textContent = "The MQTT library could not load, so live mode is unavailable here."; return; }
+  $("liveNote").textContent = "Connecting to the broker…";
+  try { client = mqtt.connect(BROKER, { clientId: "doseguard-web-" + Math.random().toString(16).slice(2, 8), reconnectPeriod: 5000, connectTimeout: 8000 }); }
+  catch { $("liveNote").textContent = "Could not reach the MQTT broker from this page."; return; }
+  client.on("connect", () => { client.subscribe(prefix + "/#"); $("liveNote").textContent = `Listening on ${prefix}. Start the cap in Wokwi.`; });
+  client.on("error", () => { $("liveNote").textContent = "Could not reach the MQTT broker from this page."; });
+  client.on("message", (topic, msg) => {
+    let d; try { d = JSON.parse(msg.toString()); } catch { return; }
+    if (topic.endsWith("/telemetry")) { live = d; liveLast = Date.now(); $("liveNote").textContent = `Receiving from ${d.id}.`; }
+    else if (topic.endsWith("/log")) liveLog = d;
+    else if (topic.endsWith("/events")) { liveEvents.push(d); if (mode === "live") onEvent(d); }
+  });
+}
+const liveModel = () => live ? { ...live, doses: liveLog.doses || [], missed: liveLog.missed || [] } : null;
+function setMode(m){
+  mode = m;
+  $("modeSim").setAttribute("aria-pressed", m === "sim"); $("modeLive").setAttribute("aria-pressed", m === "live");
+  ["capBtn","snoozeBtn","newPenBtn","temp","skipBtn"].forEach(id => $(id).disabled = m === "live");
+  $("hint").textContent = m === "live" ? "Mirroring the real cap · drag to turn" : "Click the cap · drag to turn";
+  $("feed").innerHTML = "";
+  (m === "sim" ? sim.events : liveEvents).slice(-40).forEach(onEvent);
+  if (m === "live" && !client) connectLive();
+  render();
+}
+
+// ======================= sound =======================
+let audio = null, soundOn = true, lastBeep = 0;
+function beep(f, ms){ if (!soundOn) return; try { audio = audio || new (window.AudioContext || window.webkitAudioContext)();
+  const o = audio.createOscillator(), g = audio.createGain(); o.type = "square"; o.frequency.value = f; g.gain.value = .035;
+  o.connect(g); g.connect(audio.destination); o.start(); o.stop(audio.currentTime + ms / 1000); } catch {} }
+function alarmSound(m){
+  if (mode !== "sim" || m.silenced) return;
+  const t = Date.now();
+  if (m.state === "GUARD" && t - lastBeep > 1200) { lastBeep = t; [0, 220, 440].forEach(d => setTimeout(() => beep(3000, 110), d)); }
+  else if (m.state === "MISSED" && t - lastBeep > 8000) { lastBeep = t; [0, 250].forEach(d => setTimeout(() => beep(2200, 110), d)); }
+}
+
+// ======================= state presentation =======================
+const UI = {
+  OK:           ["ok",   "All good", "Insulin is in range and the cap is on."],
+  NO_DOSE_YET:  ["ice",  "Ready", "No doses logged on this pen yet."],
+  INJECTING:    ["ice",  "Cap off", "Inject, then put the cap back. 6 s or more logs a dose."],
+  GUARD:        ["crit", "Stop. You already took a dose.", "Your last dose was less than 3 hours ago."],
+  CAP_LEFT_OFF: ["warn", "Put the cap back", "The pen needs its cap for protection."],
+  FROZEN:       ["crit", "Insulin froze", "Do not use this pen. Start a new one."],
+  MISSED:       ["warn", "Dose not taken", "Today's dose is over an hour late. Take it or snooze."],
+  HOT:          ["warn", "Too hot", "The pen is above 30 °C. Move it somewhere cooler."],
+  HEAT_EXPOSED: ["warn", "Check this insulin", "Over 2 hours above 30 °C on this pen. Ask a pharmacist."],
+  PEN_EXPIRED:  ["warn", "Replace the pen", "This pen has been in use for 28 days."],
+};
+const tone = s => (UI[s] || ["ice"])[0];
+const toneColor = k => ({ ok: C.ok, ice: C.ice, warn: C.warn, crit: C.crit })[k];
+
+function capScreen(m){   // short text for the tiny screen on the 3D cap
+  if (m.state === "GUARD") return { big: "STOP!", small: `dose ${span(m.since_min)} ago`, inv: true };
+  if (m.state === "INJECTING") return { big: `${m.hold_s}s`, small: m.hold_s * 1000 >= MIN_INJECTION_MS ? "dose logged" : "inject, recap" };
+  if (m.state === "CAP_LEFT_OFF") return { big: "RECAP", small: "put cap back" };
+  if (m.state === "FROZEN") return { big: "FROZEN", small: "do not use", inv: true };
+  if (m.state === "MISSED") return { big: "DUE", small: `${pad(m.due_hour)}:${pad(m.due_min)} dose` };
+  if (!m.last_dose) return { big: "--", small: "no doses" };
+  return { big: span(m.since_min), small: "since last dose" };
+}
+
+function oledText(m){
+  const L = [`DoseGuard ${clock(m.now)} ${mode === "sim" ? "SIM" : " ON"}`, "─".repeat(20)];
+  switch (m.state) {
+    case "GUARD": L.push(`<span class="inv big">   STOP!    </span>`, ` Dose taken ${span(m.since_min)} ago`, " Do not inject again"); break;
+    case "INJECTING": L.push(`<span class="big">  CAP OFF</span>`, `      Hold ${m.hold_s}s`, m.hold_s * 1000 >= MIN_INJECTION_MS ? " Dose will be logged" : " Inject, then recap"); break;
+    case "CAP_LEFT_OFF": L.push(`<span class="big">   RECAP</span>`, " Put the cap back on", " to protect insulin"); break;
+    case "FROZEN": L.push(`<span class="big blink">  FROZEN</span>`, "   Insulin froze.", " Do not use this pen"); break;
+    case "MISSED": L.push(`<span class="big blink"> DOSE DUE</span>`, ` ${pad(m.due_hour)}:${pad(m.due_min)} dose not taken`, "  Press to snooze"); break;
+    default: {
+      if (m.last_dose) L.push(`<span class="big">  ${span(m.since_min)}</span>`, m.guard_left_min > 0 ? ` ago · guard ${span(m.guard_left_min)}` : "   since last dose");
+      else L.push(`<span class="big"> No doses</span>`, " logged on this pen");
+      const left = m.state === "HOT" ? `TOO HOT ${Math.round(m.temp)}C` : m.state === "HEAT_EXPOSED" ? `HEAT ${m.heat_min}m check` : m.state === "PEN_EXPIRED" ? "REPLACE PEN" : `Pen ${Math.max(0, m.pen_life - m.pen_day + 1)}d left`;
+      const right = m.temp == null ? "" : `${(+m.temp).toFixed(1)}C`;
+      L.push("─".repeat(20), left + " ".repeat(Math.max(1, 20 - left.length - right.length)) + right);
+    }
+  }
+  return L.join("\n");
+}
+
+// ======================= 3D pen =======================
+const pen3d = (() => {
+  if (typeof THREE === "undefined") return null;
+  const canvas = $("three");
+  let renderer;
+  try { renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true }); } catch { return null; }
+  renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
+  renderer.outputEncoding = THREE.sRGBEncoding;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.1;
+  const scene = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(30, 2, 0.1, 100);
+  camera.position.set(0, .6, 20); camera.lookAt(0, 0, 0);
+
+  // studio reflections from a generated environment
+  const pmrem = new THREE.PMREMGenerator(renderer);
+  const envScene = new THREE.Scene();
+  const envBox = new THREE.Mesh(new THREE.BoxGeometry(30, 30, 30), new THREE.MeshBasicMaterial({ color: 0x0a0d13, side: THREE.BackSide }));
+  envScene.add(envBox);
+  const softbox = (w, h, x, y, z, c, i) => { const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ color: new THREE.Color(c).multiplyScalar(i), side: THREE.DoubleSide })); m.position.set(x, y, z); m.lookAt(0, 0, 0); envScene.add(m); };
+  softbox(18, 4, 0, 12, 4, 0xffffff, 3.2);
+  softbox(6, 14, -13, 2, 6, 0xbfefff, 1.6);
+  softbox(6, 14, 13, 0, -4, 0xffffff, 1.2);
+  softbox(20, 3, 0, -10, 8, 0x8fe6ff, .5);
+  scene.environment = pmrem.fromScene(envScene, 0.04).texture;
+
+  scene.add(new THREE.HemisphereLight(0xbfdfff, 0x0a0c10, .35));
+  const key = new THREE.DirectionalLight(0xffffff, 1.4); key.position.set(4, 8, 10); scene.add(key);
+  const rim = new THREE.DirectionalLight(0x8fe6ff, 1.2); rim.position.set(-6, 3, -8); scene.add(rim);
+
+  const root = new THREE.Group(); scene.add(root);
+  const pen = new THREE.Group(); root.add(pen);
+  root.rotation.set(.18, -.28, .16);
+
+  const mat = (o) => new THREE.MeshPhysicalMaterial({ roughness: .35, metalness: .1, clearcoat: .8, clearcoatRoughness: .2, ...o });
+  const along = (geo) => { geo.rotateZ(Math.PI / 2); return geo; };   // cylinders along X
+  const bodyMat = mat({ color: 0x1b212c, metalness: .45, roughness: .3, envMapIntensity: .55 });
+  const add = (g, m, x = 0) => { const o = new THREE.Mesh(g, m); o.position.x = x; pen.add(o); return o; };
+
+  // pen: tip at -x, dose knob at +x
+  add(along(new THREE.CylinderGeometry(.9, .9, 8.6, 64)), bodyMat, 1.2);
+  add(along(new THREE.CylinderGeometry(.92, .92, 2.4, 64)), mat({ color: 0xd9eef8, transparent: true, opacity: .35, roughness: .08 }), -1.6);   // cartridge window
+  add(along(new THREE.CylinderGeometry(.62, .62, 2.3, 48)), mat({ color: 0xffb15c, roughness: .5, clearcoat: 0, emissive: 0x3a1c00 }), -1.6);   // insulin
+  add(along(new THREE.CylinderGeometry(.93, .93, .55, 64)), mat({ color: 0x8f7cf0, roughness: .4 }), .6);
+  add(along(new THREE.CylinderGeometry(.82, .9, .5, 64)), bodyMat, -3.15);
+  add(along(new THREE.CylinderGeometry(.42, .55, .7, 32)), mat({ color: 0xa9b3c2, metalness: .7, roughness: .25 }), -3.7);   // hub
+  add(along(new THREE.CylinderGeometry(.03, .03, 1.5, 12)), mat({ color: 0xdfe5ee, metalness: 1, roughness: .15 }), -4.75);   // needle
+  // dose knob with ridges
+  const knob = add(along(new THREE.CylinderGeometry(1.0, 1.0, 1.6, 48)), mat({ color: 0x1d2330, roughness: .45 }), 6.3);
+  for (let i = 0; i < 6; i++) add(along(new THREE.TorusGeometry(1.0, .05, 8, 48).rotateY(Math.PI / 2).rotateZ(-Math.PI / 2)), mat({ color: 0x3a4354 }), 5.65 + i * .26);
+  add(along(new THREE.CylinderGeometry(.55, .6, .6, 32)), mat({ color: 0x4b5569 }), 7.35);
+  // dose window with a printed "20"
+  const dw = document.createElement("canvas"); dw.width = 128; dw.height = 64;
+  const dctx = dw.getContext("2d"); dctx.fillStyle = "#05070b"; dctx.fillRect(0, 0, 128, 64); dctx.fillStyle = "#e9eef5"; dctx.font = "600 40px Geist Mono, monospace"; dctx.textAlign = "center"; dctx.textBaseline = "middle"; dctx.fillText("20", 64, 34);
+  const dwTex = new THREE.CanvasTexture(dw); dwTex.encoding = THREE.sRGBEncoding;
+  const dwin = new THREE.Mesh(new THREE.PlaneGeometry(1.5, .75), new THREE.MeshBasicMaterial({ map: dwTex }));
+  dwin.position.set(3.6, 0, .905); pen.add(dwin);
+
+  // ---- the DoseGuard cap ----
+  const cap = new THREE.Group(); pen.add(cap);
+  const capBody = new THREE.Mesh(along(new THREE.CapsuleGeometry(1.35, 3.4, 12, 48)), mat({ color: 0xeef1f6, roughness: .28, clearcoat: 1, metalness: 0 }));
+  cap.add(capBody);
+  // flat display bezel on top (front face, +z)
+  const bezel = new THREE.Mesh(new THREE.BoxGeometry(2.7, 1.25, .3), mat({ color: 0x06080c, roughness: .2, clearcoat: 1 }));
+  bezel.position.set(-.35, .1, 1.22); cap.add(bezel);
+  const sc = document.createElement("canvas"); sc.width = 384; sc.height = 176;
+  const sctx = sc.getContext("2d");
+  const scTex = new THREE.CanvasTexture(sc); scTex.encoding = THREE.sRGBEncoding;
+  const screen = new THREE.Mesh(new THREE.PlaneGeometry(2.45, 1.1), new THREE.MeshBasicMaterial({ map: scTex, toneMapped: false }));
+  screen.position.set(-.35, .1, 1.376); cap.add(screen);
+  // status LED
+  const ledMat = new THREE.MeshBasicMaterial({ color: 0x3ddc97, toneMapped: false });
+  const ledM = new THREE.Mesh(new THREE.SphereGeometry(.2, 24, 16), ledMat); ledM.position.set(1.55, .1, 1.3); cap.add(ledM);
+  const ring = new THREE.Mesh(new THREE.TorusGeometry(.29, .05, 12, 32), mat({ color: 0xc4ccd8, metalness: .8, roughness: .2 })); ring.position.set(1.55, .1, 1.3); cap.add(ring);
+  const glowC = document.createElement("canvas"); glowC.width = glowC.height = 64;
+  const g = glowC.getContext("2d"); const grd = g.createRadialGradient(32, 32, 0, 32, 32, 32); grd.addColorStop(0, "rgba(255,255,255,1)"); grd.addColorStop(.25, "rgba(255,255,255,.5)"); grd.addColorStop(1, "rgba(255,255,255,0)"); g.fillStyle = grd; g.fillRect(0, 0, 64, 64);
+  const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(glowC), color: 0x3ddc97, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }));
+  glow.scale.set(2.2, 2.2, 1); glow.position.set(1.55, .1, 1.5); cap.add(glow);
+  const ledLight = new THREE.PointLight(0x3ddc97, 1.2, 6); ledLight.position.set(1.55, .3, 2); cap.add(ledLight);
+  // engraved wordmark band
+  const wm = document.createElement("canvas"); wm.width = 512; wm.height = 64;
+  const wctx = wm.getContext("2d"); wctx.fillStyle = "#9aa3b2"; wctx.font = "600 34px Geist, sans-serif"; wctx.textAlign = "center"; wctx.textBaseline = "middle";
+  if (wctx.letterSpacing !== undefined) wctx.letterSpacing = "10px"; wctx.fillText("DOSEGUARD", 256, 34);
+  const wmTex = new THREE.CanvasTexture(wm); wmTex.encoding = THREE.sRGBEncoding;
+  const word = new THREE.Mesh(new THREE.PlaneGeometry(2.4, .3), new THREE.MeshBasicMaterial({ map: wmTex, transparent: true }));
+  word.position.set(-.35, -.82, 1.02); word.rotation.x = -.62; cap.add(word);
+
+  const CAP_ON = { x: -4.15, y: 0, rz: 0 }, CAP_OFF = { x: -8.2, y: 1.9, rz: .32 };
+  const capPos = { ...CAP_ON }; let capTarget = CAP_ON;
+  cap.position.set(capPos.x, 0, 0);
+
+  // contact shadow
+  const shC = document.createElement("canvas"); shC.width = 256; shC.height = 256;
+  const sh = shC.getContext("2d"); const sg = sh.createRadialGradient(128, 128, 0, 128, 128, 128); sg.addColorStop(0, "rgba(0,0,0,.6)"); sg.addColorStop(1, "rgba(0,0,0,0)"); sh.fillStyle = sg; sh.fillRect(0, 0, 256, 256);
+  const shadow = new THREE.Mesh(new THREE.PlaneGeometry(18, 5), new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(shC), transparent: true, depthWrite: false }));
+  shadow.rotation.x = -Math.PI / 2; shadow.position.set(0, -3.1, 0); scene.add(shadow);
+
+  // interaction: drag to turn, click cap to toggle
+  let drag = null, rotY = -.28, rotX = .18, velY = 0, moved = 0, lastInteract = 0;
+  const ray = new THREE.Raycaster(), ptr = new THREE.Vector2();
+  canvas.addEventListener("pointerdown", e => { drag = { x: e.clientX, y: e.clientY, ry: rotY, rx: rotX }; moved = 0; canvas.setPointerCapture(e.pointerId); });
+  canvas.addEventListener("pointermove", e => {
+    if (drag) { const dx = e.clientX - drag.x, dy = e.clientY - drag.y; moved = Math.max(moved, Math.abs(dx) + Math.abs(dy));
+      const ny = drag.ry + dx * .006; velY = ny - rotY; rotY = ny; rotX = Math.max(-.3, Math.min(.6, drag.rx + dy * .004)); lastInteract = performance.now(); }
+    else { const r = canvas.getBoundingClientRect(); ptr.set((e.clientX - r.left) / r.width * 2 - 1, -(e.clientY - r.top) / r.height * 2 + 1); ray.setFromCamera(ptr, camera);
+      canvas.style.cursor = ray.intersectObject(cap, true).length ? "pointer" : "grab"; }
+  });
+  canvas.addEventListener("pointerup", e => {
+    if (drag && moved < 6 && mode === "sim") { const r = canvas.getBoundingClientRect(); ptr.set((e.clientX - r.left) / r.width * 2 - 1, -(e.clientY - r.top) / r.height * 2 + 1);
+      ray.setFromCamera(ptr, camera); if (ray.intersectObject(cap, true).length) sim.toggleCap(); }
+    drag = null;
+  });
+  canvas.addEventListener("keydown", e => { if ((e.key === "Enter" || e.key === " ") && mode === "sim") { e.preventDefault(); sim.toggleCap(); } });
+
+  function resize(){ const w = canvas.clientWidth, h = canvas.clientHeight; renderer.setSize(w, h, false); camera.aspect = w / h;
+    camera.position.z = w < 640 ? 32 : w < 1000 ? 24 : 19.5; camera.updateProjectionMatrix(); }
+  new ResizeObserver(resize).observe(canvas); resize();
+
+  let screenKey = "";
+  function drawScreen(m, tc){
+    const s = capScreen(m), key = JSON.stringify(s) + tc + (Math.floor(Date.now() / 300) % 2);
+    if (key === screenKey) return; screenKey = key;
+    sctx.fillStyle = "#020306"; sctx.fillRect(0, 0, 384, 176);
+    const fg = "#c6f6ff", blinkOff = (m.state === "FROZEN" || m.state === "MISSED") && Math.floor(Date.now() / 300) % 2;
+    if (s.inv) { sctx.fillStyle = fg; sctx.fillRect(14, 16, 356, 96); }
+    sctx.fillStyle = s.inv ? "#020306" : fg; sctx.textAlign = "center"; sctx.textBaseline = "middle";
+    sctx.shadowColor = "rgba(143,230,255,.6)"; sctx.shadowBlur = s.inv ? 0 : 10;
+    if (!blinkOff) { sctx.font = `${s.big.length > 6 ? 84 : 104}px VT323, monospace`; sctx.fillText(s.big, 192, 66); }
+    sctx.shadowBlur = 6; sctx.fillStyle = fg; sctx.font = "40px VT323, monospace"; sctx.fillText(s.small, 192, 146);
+    scTex.needsUpdate = true;
+  }
+
+  let t0 = performance.now();
+  function frame(){
+    requestAnimationFrame(frame);
+    if (document.hidden) return;
+    const t = (performance.now() - t0) / 1000;
+    // idle sway when the user is not dragging
+    if (!drag) { velY *= .92; rotY += velY; if (performance.now() - lastInteract > 2500) rotY += (-.28 + Math.sin(t * .35) * .22 - rotY) * .02; }
+    root.rotation.y = rotY; root.rotation.x = rotX;
+    root.position.y = Math.sin(t * 1.1) * .12;
+    capPos.x += (capTarget.x - capPos.x) * .12; capPos.y += (capTarget.y - capPos.y) * .12; capPos.rz += (capTarget.rz - capPos.rz) * .12;
+    cap.position.set(capPos.x, capPos.y, 0); cap.rotation.z = capPos.rz;
+    renderer.render(scene, camera);
+  }
+  frame();
+
+  return {
+    update(m){
+      capTarget = m.cap_on ? CAP_ON : CAP_OFF;
+      const k = tone(m.state), col = new THREE.Color(m.state === "INJECTING" && m.hold_s * 1000 >= MIN_INJECTION_MS ? C.ok : toneColor(k));
+      const blinkOff = (k === "crit" && Math.floor(Date.now() / 120) % 2) || (k === "warn" && Math.floor(Date.now() / 500) % 2);
+      const heartbeat = k === "ok" ? (Date.now() % 2400 < 500 ? 1 : .25) : 1;
+      const inten = blinkOff ? .08 : heartbeat;
+      ledMat.color.copy(col).multiplyScalar(.4 + inten * .9); glow.material.color.copy(col); glow.material.opacity = inten; ledLight.color.copy(col); ledLight.intensity = 1.6 * inten;
+      drawScreen(m, k);
+    }
+  };
+})();
+if (!pen3d) { $("three").style.display = "none"; $("svgfall").style.display = "grid";
+  $("svgCap").addEventListener("click", () => mode === "sim" && sim.toggleCap()); $("hint").textContent = "Click the cap"; }
+
+// ======================= rendering =======================
+const RING_C = 2 * Math.PI * 128;
+(function drawTicks(){ let s = "";
+  for (let i = 0; i < 12; i++) { const a = i / 12 * 2 * Math.PI - Math.PI / 2, r1 = 110, r2 = i % 4 === 0 ? 100 : 105;
+    s += `<line x1="${150 + r1 * Math.cos(a)}" y1="${150 + r1 * Math.sin(a)}" x2="${150 + r2 * Math.cos(a)}" y2="${150 + r2 * Math.sin(a)}" stroke="rgba(255,255,255,.18)" stroke-width="2" stroke-linecap="round"/>`; }
+  $("ticks").innerHTML = s; })();
+
+function renderHero(m){
+  const [k, title, text] = UI[m.state] || ["ice", m.state, ""];
+  const col = toneColor(k);
+  $("sTitle").textContent = title; $("sText").textContent = text + (m.silenced ? " Sound silenced." : "");
+  $("led").style.background = col; $("led").style.boxShadow = `0 0 16px ${col}`;
+  document.querySelector(".hero").style.setProperty("--halo", { ok: "rgba(61,220,151,.10)", ice: "rgba(143,230,255,.10)", warn: "rgba(255,181,71,.12)", crit: "rgba(255,77,94,.22)" }[k]);
+  $("capBtn").textContent = m.cap_on ? "Take cap off" : "Put cap back on";
+  $("clock").textContent = `${dateLbl(m.now)} · ${clock(m.now)} Riyadh · ${m.scale}× time`;
+  if (pen3d) pen3d.update(m);
+  else { $("svgCap").setAttribute("transform", m.cap_on ? "" : "translate(-30 -40) rotate(-8 104 85)"); $("svgCapTxt").textContent = capScreen(m).big; $("svgCapLed").setAttribute("fill", col); }
+}
+
+function renderDial(m){
+  let p = 0, color = C.ice, verdict = "No doses logged", vc = C.muted;
+  if (m.last_dose) { p = Math.min(1, m.since_min / m.guard_min);
+    if (m.since_min < m.guard_min) { verdict = `Guard on · ${span(m.guard_left_min)} left`; vc = C.ice; }
+    else { color = C.ok; verdict = "No dose in the last 3 hours"; vc = C.ok; } }
+  if (m.state === "GUARD") { color = C.crit; verdict = "Second dose blocked"; vc = C.crit; }
+  if (m.state === "MISSED") { color = C.warn; verdict = "Today's dose is late"; vc = C.warn; }
+  $("ring").setAttribute("stroke-dasharray", `${(p * RING_C).toFixed(1)} ${RING_C.toFixed(1)}`); $("ring").setAttribute("stroke", color);
+  const a = p * 2 * Math.PI - Math.PI / 2; $("ringDot").setAttribute("cx", 150 + 128 * Math.cos(a)); $("ringDot").setAttribute("cy", 150 + 128 * Math.sin(a)); $("ringDot").setAttribute("stroke", color);
+  $("since").textContent = m.last_dose ? span(m.since_min) : "--";
+  $("sinceLbl").textContent = m.last_dose ? `since the dose at ${clock(m.last_dose)}` : "no dose on this pen yet";
+  $("verdict").textContent = verdict; $("verdict").style.color = vc;
+  const next = lastDueAt(m.now) + D;
+  $("due").textContent = `Next dose ${clock(next)} · in ${span(minsBetween(m.now, next))}`;
+}
+
+function renderPanel(m){
+  $("oled").innerHTML = oledText(m);
+  $("devId").textContent = m.id;
+  if (mode === "live") $("temp").value = m.temp ?? 24;
+  $("tempVal").textContent = m.temp == null ? "--" : `${(+m.temp).toFixed(1)} °C`;
+  $("dueLbl").textContent = `${pad(m.due_hour)}:${pad(m.due_min)}`;
+  const day = m.pen_day, left = m.pen_life - day + 1;
+  $("penDay").textContent = `Day ${day}`;
+  $("penLeft").textContent = left > 0 ? `of ${m.pen_life} · ${left} days left` : `Over ${m.pen_life} days: replace`;
+  let c = ""; for (let i = 1; i <= m.pen_life; i++) c += `<i class="${i < day ? "used" : i === day ? "today" : ""}${day > m.pen_life ? " over" : ""}"></i>`;
+  $("cells").innerHTML = c;
+  $("heat").textContent = `${m.heat_min} min`;
+  $("heatLbl").textContent = `above ${m.heat_limit} °C · limit ${m.heat_budget} min`;
+  $("heatBar").style.width = Math.min(100, m.heat_min / m.heat_budget * 100) + "%";
+  $("heatBar").style.background = m.heat_min >= m.heat_budget ? C.crit : C.warn;
+  const t = m.temp;
+  $("tempNow").textContent = t == null ? "--" : `${(+t).toFixed(1)}°`;
+  $("tempMax").textContent = m.max_temp == null ? "--" : `highest on this pen ${(+m.max_temp).toFixed(1)} °C`;
+  $("tempBar").style.width = (t == null ? 0 : Math.max(0, Math.min(100, (t + 5) / 47 * 100))) + "%";
+  $("tempBar").style.background = t == null ? C.dim : t <= 0 ? C.crit : t > 30 ? C.warn : C.ice;
+  $("frozen").textContent = m.frozen ? "Frozen" : "Clear"; $("frozen").style.color = m.frozen ? C.crit : C.text;
+  $("frozenLbl").textContent = m.frozen ? "do not use this pen" : "never frozen since opened";
+}
+
+let mapKey = "";
+function renderMap(m){
+  const key = `${dayStart(m.now)}|${m.doses.length}|${m.missed.length}|${(m.doses.at(-1) || [0])[0]}`;
+  if (key === mapKey) return; mapKey = key;
+  const W = 900, Hh = 250, L = 54, R = 12, T = 14, B = 44, days = 14, Y0 = 12, Y1 = 24;
+  const today = dayStart(m.now), cw = (W - L - R) / days;
+  const yOf = h => T + (Math.max(Y0, Math.min(Y1, h)) - Y0) / (Y1 - Y0) * (Hh - T - B);
+  const dueH = m.due_hour + m.due_min / 60;
+  let s = `<rect x="${L}" y="${yOf(DOSE_HOUR - EARLY_MIN / 60)}" width="${W - L - R}" height="${yOf(dueH + GRACE_MIN / 60) - yOf(DOSE_HOUR - EARLY_MIN / 60)}" fill="rgba(143,230,255,.07)"/>`;
+  for (let h = Y0; h <= Y1; h += 3) s += `<line x1="${L}" x2="${W - R}" y1="${yOf(h)}" y2="${yOf(h)}" stroke="${C.line}"/><text x="${L - 10}" y="${yOf(h) + 4}" text-anchor="end" font-family="Geist Mono, monospace" font-size="11" fill="${C.dim}">${pad(h % 24)}:00</text>`;
+  s += `<line x1="${L}" x2="${W - R}" y1="${yOf(dueH)}" y2="${yOf(dueH)}" stroke="${C.ice}" stroke-opacity=".5" stroke-dasharray="3 5"/>`;
+  for (let i = 0; i < days; i++) {
+    const ds = today - (days - 1 - i) * D, cx = L + cw * (i + .5), p = lp(ds), isT = i === days - 1;
+    if (isT) s += `<rect x="${L + cw * i + 3}" y="${T}" width="${cw - 6}" height="${Hh - T - B}" rx="8" fill="rgba(255,255,255,.035)" stroke="rgba(255,255,255,.12)"/>`;
+    s += `<text x="${cx}" y="${Hh - B + 20}" text-anchor="middle" font-family="Geist, sans-serif" font-size="12" font-weight="${isT ? 600 : 400}" fill="${isT ? C.text : C.muted}">${isT ? "Today" : WD[p.wd]}</text>`;
+    s += `<text x="${cx}" y="${Hh - B + 35}" text-anchor="middle" font-family="Geist Mono, monospace" font-size="10" fill="${C.dim}">${p.d} ${MO[p.mo]}</text>`;
+  }
+  m.missed.forEach(due => { const i = days - 1 - Math.round((today - dayStart(due)) / D); if (i < 0 || i >= days) return;
+    const cx = L + cw * (i + .5), cy = yOf(dueH);
+    s += `<path d="M${cx - 7} ${cy - 7}l14 14M${cx + 7} ${cy - 7}l-14 14" stroke="${C.crit}" stroke-width="2.6" stroke-linecap="round"><title>Missed dose ${dateLbl(due)}</title></path>`; });
+  m.doses.forEach(([t, hold, flags]) => { const i = days - 1 - Math.round((today - dayStart(t)) / D); if (i < 0 || i >= days) return;
+    const p = lp(t), cx = L + cw * (i + .5), cy = yOf(p.h + p.m / 60);
+    const tip = `<title>${dateLbl(t)} ${clock(t)} · cap off ${hold}s${flags & F_GUARD ? " · second dose inside guard" : ""}${flags & F_LATE ? " · late" : ""}</title>`;
+    if (flags & F_GUARD) s += `<g><circle cx="${cx}" cy="${cy}" r="5.5" fill="${C.crit}"/><circle cx="${cx}" cy="${cy}" r="10" fill="none" stroke="${C.crit}" stroke-width="1.6"/>${tip}</g>`;
+    else { const col = flags & F_LATE ? C.warn : C.ice; s += `<g><circle cx="${cx}" cy="${cy}" r="11" fill="${col}" opacity=".15"/><circle cx="${cx}" cy="${cy}" r="6" fill="${col}"/>${tip}</g>`; } });
+  $("map").innerHTML = s;
+}
+
+const EV = {
+  dose: e => [`Dose logged · cap off ${e.hold_s}s${e.guard ? " · inside the guard window" : ""}${e.late ? " · late" : ""}`, e.guard ? "crit" : "ok"],
+  guard_warning: e => [`STOP alarm · cap opened ${span(e.since_min)} after the last dose`, "crit"],
+  cap_off: () => ["Cap off", ""], cap_peek: () => ["Cap back on quickly · not counted", ""],
+  dose_missed: e => [`Missed dose logged for ${dateLbl(e.due)}`, "crit"], missed_snoozed: () => ["Missed-dose reminder snoozed", ""],
+  heat_start: () => ["Pen above 30 °C", "warn"], heat_end: () => ["Pen back below 30 °C", "ok"],
+  heat_budget_exceeded: () => ["Over 2 h above 30 °C · check insulin", "crit"], frozen: () => ["Insulin froze · do not use", "crit"],
+  new_pen: () => ["New pen started · 28-day timer reset", "ok"], online: () => ["Cap online", "ok"],
+  state: e => e.state === "MISSED" ? ["Reminder · today's dose is late", "warn"] : e.state === "CAP_LEFT_OFF" ? ["Reminder · put the cap back", "warn"] : null,
+};
+function onEvent(e){
+  const f = EV[e.type]; if (!f) return; const r = f(e); if (!r) return;
+  const li = document.createElement("li");
+  li.innerHTML = `<time>${e.t ? `${clock(e.t)} · ${lp(e.t).d} ${MO[lp(e.t).mo]}` : ""}</time><span class="${r[1]}"></span>`;
+  li.lastChild.textContent = r[0]; $("feed").prepend(li);
+  while ($("feed").children.length > 60) $("feed").lastChild.remove();
+}
+
+function render(){
+  let m;
+  if (mode === "sim") { sim.tick(); m = sim.model(); }
+  else { m = liveModel(); $("liveDot").classList.toggle("on", !!m && Date.now() - liveLast < 15000);
+    if (!m) { $("sTitle").textContent = "Waiting for the cap"; $("sText").textContent = "Start DoseGuard in Wokwi. Its data appears within a few seconds."; return; } }
+  renderHero(m); renderDial(m); renderPanel(m); renderMap(m); alarmSound(m);
+}
+
+// ======================= controls =======================
+$("capBtn").addEventListener("click", () => sim.toggleCap());
+$("snoozeBtn").addEventListener("click", () => sim.snooze());
+$("skipBtn").addEventListener("click", () => sim.skip(H));
+$("temp").addEventListener("input", e => sim.setTemp(parseFloat(e.target.value)));
+$("soundBtn").addEventListener("click", () => { soundOn = !soundOn; $("soundBtn").textContent = soundOn ? "Sound on" : "Sound off"; $("soundBtn").setAttribute("aria-pressed", soundOn); });
+$("modeSim").addEventListener("click", () => setMode("sim"));
+$("modeLive").addEventListener("click", () => setMode("live"));
+$("connectBtn").addEventListener("click", () => { connectLive(); setMode("live"); });
+let holdRaf = null, holdStart = 0;
+function holdStep(){ const p = Math.min(1, (Date.now() - holdStart) / 3000); $("holdFill").style.transform = `scaleX(${p})`;
+  if (p >= 1) { stopHold(); sim.newPen(); return; } holdRaf = requestAnimationFrame(holdStep); }
+function stopHold(){ cancelAnimationFrame(holdRaf); holdRaf = null; $("holdFill").style.transform = "scaleX(0)"; }
+$("newPenBtn").addEventListener("pointerdown", e => { if ($("newPenBtn").disabled) return; e.preventDefault(); holdStart = Date.now(); holdStep(); });
+["pointerup","pointerleave","pointercancel"].forEach(ev => $("newPenBtn").addEventListener(ev, stopHold));
+(function(){ const h = location.hostname; if (h.endsWith("github.io")) $("repo").href = `https://github.com/${h.split(".")[0]}/${location.pathname.split("/")[1]}`; })();
+
+sim.events.forEach(onEvent);
+document.fonts && document.fonts.load("40px VT323").then(() => {}).catch(() => {});
+render();
+setInterval(render, 200);
+</script>
+</body>
+</html>
