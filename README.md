@@ -6,7 +6,7 @@
 
 **[▶ Try the live demo](https://salhace.github.io/doseguard/)** — take the cap off, inject, then try to inject again.
 
-![STOP alarm when the cap is opened too soon after a dose](docs/images/stop-alarm.png)
+[![DoseGuard demo](docs/images/stop-alarm.png)](https://salhace.github.io/doseguard/)
 
 ---
 
