@@ -170,4 +170,4 @@ DoseGuard is a student engineering project. It is not a medical device, and it d
 
 ---
 
-**Salha Alwahbi** · Computer Engineering, Prince Sattam bin Abdulaziz University · MIT License
+**Salha Alwahby** · Computer Engineering, Prince Sattam bin Abdulaziz University · MIT License
