@@ -132,6 +132,11 @@ input[type=range]{width:100%;accent-color:var(--ice);margin:10px 0 6px}
 .legend{display:flex;flex-wrap:wrap;gap:8px 20px;font-size:.84rem;color:var(--muted);margin-top:14px}
 .legend span{display:inline-flex;align-items:center;gap:7px}
 
+.ai{background:linear-gradient(135deg,rgba(143,230,255,.07),rgba(157,138,242,.06));border-color:rgba(143,230,255,.18)}
+.aihead{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+.aibadge{font-family:var(--mono);font-size:.72rem;color:var(--ice);border:1px solid rgba(143,230,255,.3);border-radius:999px;padding:4px 10px}
+.aigrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:24px;margin-top:6px}
+@media (max-width:760px){.aigrid{grid-template-columns:1fr}}
 /* feed + steps */
 .feed{list-style:none;margin:14px 0 0;padding:0;max-height:360px;overflow:auto}
 .feed li{display:grid;grid-template-columns:110px minmax(0,1fr);gap:14px;padding:11px 0;border-bottom:1px solid var(--line);font-size:.92rem}
@@ -254,6 +259,15 @@ footer .wrap{display:flex;flex-wrap:wrap;justify-content:space-between;gap:10px 
       <div class="card c3 metric"><div class="k">Temperature</div><div class="v" id="tempNow">--</div><div class="s" id="tempMax">--</div><div class="meter"><i id="tempBar"></i></div></div>
       <div class="card c3 metric"><div class="k">Freeze check</div><div class="v" id="frozen">--</div><div class="s" id="frozenLbl">--</div></div>
 
+      <div class="card c12 ai">
+        <div class="aihead"><p class="eyebrow">AI dose coach · learns this patient's routine</p><span class="aibadge">On-device ML</span></div>
+        <div class="aigrid">
+          <div class="metric"><div class="k">Usual dose time</div><div class="v" id="aiUsual">--</div><div class="s" id="aiSpread">--</div></div>
+          <div class="metric"><div class="k">Risk of missing tonight</div><div class="v" id="aiRisk">--</div><div class="s" id="aiRiskLbl">--</div><div class="meter"><i id="aiRiskBar"></i></div></div>
+          <div class="metric"><div class="k">Smart reminder</div><div class="v" id="aiRemind">--</div><div class="s" id="aiRemindLbl">--</div></div>
+        </div>
+        <p class="note" id="aiWhy">--</p>
+      </div>
       <div class="card c12">
         <p class="eyebrow">Dose map · last 14 days · daily dose at <span id="dueLbl">21:00</span></p>
         <div class="mapwrap"><svg id="map" viewBox="0 0 900 250" aria-label="Doses over the last 14 days"></svg></div>
@@ -803,12 +817,65 @@ function onEvent(e){
   while ($("feed").children.length > 60) $("feed").lastChild.remove();
 }
 
+
+// ======================= AI dose coach (on-device logistic regression) =======================
+// Learns from this pen's own history: each past day becomes one example with
+// features (weekend, yesterday late/missed, recent lateness trend) and label
+// (1 = dose was late or missed). A tiny logistic-regression model is trained in
+// the browser and predicts tonight's risk, then picks a personal reminder time.
+let aiKey = "";
+function aiCoach(m){
+  const key = `${dayStart(m.now)}|${m.doses.length}|${m.missed.length}`;
+  if (key === aiKey) return; aiKey = key;
+  const today = dayStart(m.now), dueOff = (m.due_hour * 60 + m.due_min);
+  const days = [];
+  for (let i = 14; i >= 1; i--) {
+    const ds = today - i * D, due = ds + dueOff * 60;
+    const dose = m.doses.find(d => !(d[2] & F_GUARD) && d[0] >= due - EARLY_MIN * 60 && d[0] < due + MISSED_AFTER_MIN * 60);
+    const missed = m.missed.includes(due) || !dose;
+    const lateMin = dose ? (dose[0] - due) / 60 : null;
+    days.push({ wd: lp(ds).wd, missed, lateMin, bad: missed || (lateMin != null && lateMin > GRACE_MIN) ? 1 : 0 });
+  }
+  const feats = (i) => {
+    const d = i < days.length ? days[i] : { wd: lp(today).wd }, prev = days[i - 1], prev3 = days.slice(Math.max(0, i - 3), i);
+    const trend = prev3.length ? prev3.reduce((a, x) => a + (x.lateMin == null ? 90 : Math.max(-30, Math.min(120, x.lateMin))), 0) / prev3.length / 60 : 0;
+    return [1, (d.wd === 5 || d.wd === 6) ? 1 : 0, prev ? prev.bad : 0, trend];
+  };
+  const X = [], Y = [];
+  for (let i = 1; i < days.length; i++) { X.push(feats(i)); Y.push(days[i].bad); }
+  let w = [-1.5, 0, 0, 0];
+  const sig = z => 1 / (1 + Math.exp(-z));
+  for (let it = 0; it < 600; it++) {               // gradient descent with light L2
+    const g = [0, 0, 0, 0];
+    X.forEach((x, j) => { const e = sig(x.reduce((a, v, k) => a + v * w[k], 0)) - Y[j]; x.forEach((v, k) => g[k] += e * v); });
+    w = w.map((wk, k) => wk - 0.3 * (g[k] / X.length + (k ? 0.05 * wk : 0)));
+  }
+  const xt = feats(days.length), risk = sig(xt.reduce((a, v, k) => a + v * w[k], 0));
+  const onTime = days.filter(d => d.lateMin != null).map(d => d.lateMin).sort((a, b) => a - b);
+  const med = onTime.length ? onTime[Math.floor(onTime.length / 2)] : 0;
+  const sd = onTime.length ? Math.sqrt(onTime.reduce((a, v) => a + (v - med) ** 2, 0) / onTime.length) : 0;
+  const usual = dueOff + Math.round(med), lead = risk > .5 ? 45 : risk > .25 ? 25 : 10, remind = usual - lead;
+  const hm = x => `${pad(Math.floor(((x % 1440) + 1440) % 1440 / 60))}:${pad(((x % 60) + 60) % 60)}`;
+  $("aiUsual").textContent = hm(usual);
+  $("aiSpread").textContent = `± ${Math.round(sd)} min over the last 14 days`;
+  const pct = Math.round(risk * 100), col = risk > .5 ? C.crit : risk > .25 ? C.warn : C.ok;
+  $("aiRisk").textContent = `${pct}%`; $("aiRisk").style.color = col;
+  $("aiRiskLbl").textContent = risk > .5 ? "High: extra reminder scheduled" : risk > .25 ? "Medium: earlier reminder" : "Low: routine looks steady";
+  $("aiRiskBar").style.width = pct + "%"; $("aiRiskBar").style.background = col;
+  $("aiRemind").textContent = hm(remind);
+  $("aiRemindLbl").textContent = `${lead} min before the usual time`;
+  const reasons = [];
+  if (xt[1]) reasons.push("weekends tend to be riskier"); if (xt[2]) reasons.push("yesterday's dose was late or missed");
+  if (xt[3] > .5) reasons.push("doses have been drifting later");
+  $("aiWhy").textContent = `Trained in your browser on ${X.length} days of this pen's history (late: ${days.filter(d => !d.missed && d.bad).length}, missed: ${days.filter(d => d.missed).length}). ` +
+    (reasons.length ? `Tonight's risk is higher because ${reasons.join(" and ")}.` : "No warning signs in the recent pattern.");
+}
 function render(){
   let m;
   if (mode === "sim") { sim.tick(); m = sim.model(); }
   else { m = liveModel(); $("liveDot").classList.toggle("on", !!m && Date.now() - liveLast < 15000);
     if (!m) { $("sTitle").textContent = "Waiting for the cap"; $("sText").textContent = "Start DoseGuard in Wokwi. Its data appears within a few seconds."; return; } }
-  renderHero(m); renderDial(m); renderPanel(m); renderMap(m); alarmSound(m);
+  renderHero(m); renderDial(m); renderPanel(m); renderMap(m); aiCoach(m); alarmSound(m);
 }
 
 // ======================= controls =======================
